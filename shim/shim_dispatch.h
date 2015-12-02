@@ -3,6 +3,7 @@
 #include <string>
 
 #include "shim_builtins.h"
+#include "shim_user.h"
 
 struct lua_State;
 
