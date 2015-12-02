@@ -1,4 +1,5 @@
 #include <luajit-2.0/lua.hpp>
+#include "shim/shim_dispatch.h"
 #include "catch.hpp"
 
 struct State
@@ -30,3 +31,12 @@ struct Pop
     lua_State* L;
     int top;
 };
+
+template<typename T>
+static inline void quick_register(lua_State* L)
+{
+    Pop pop(L);
+    constexpr auto name = Shim::user_type_name_storage<T>::value;
+    static_assert(name != nullptr, "");
+    luaL_newmetatable(L, name);
+}

@@ -13,18 +13,6 @@ template<>
 struct user_type_name_storage<Foo>
 { static constexpr const char* value = "Foo"; };
 
-template<typename T>
-static void quick_register(lua_State* L)
-{
-    Pop pop(L);
-
-    constexpr const char* name = user_type_name_storage<T>::value;
-    if ( !luaL_newmetatable(L, name) )
-        return; // it's already been registered
-
-    //... that's it!
-}
-
 TEST_CASE( "dispatch" )
 {
     State lua;

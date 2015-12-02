@@ -18,6 +18,7 @@ struct user_type_name_storage
 
 struct udata
 {
+
     template<typename T>
     static T** allocate(lua_State* L)
     { return static_cast<T**>(lua_newuserdata(L, sizeof(T*))); }
@@ -37,7 +38,6 @@ struct udata
         return nullptr;
     }
 
-
     template<typename T>
     static T* extract(int n, lua_State* L)
     {
@@ -48,13 +48,29 @@ struct udata
     static void assign_metatable(int n, lua_State* L)
     { lua_setmetatable(L, n); }
 
-    static void assign_metatable(const std::string& name, lua_State* L)
+    static void assign_metatable(const char* name, lua_State* L)
     {
-        luaL_getmetatable(L, name.c_str());
+        luaL_getmetatable(L, name);
         // type must be registered with lua before use
         assert(!lua_isnoneornil(L, -1));
         assign_metatable(-2, L);
     }
+
+    template<typename T, typename... Args>
+    static T* initialize(lua_State* L, Args&&... args)
+    {
+        auto p = construct<T>(L, std::forward<Args>(args)...);
+
+        if ( p )
+        {
+            constexpr const char* name = user_type_name_storage<T>::value;
+            static_assert(name != nullptr, "");
+            assign_metatable(name, L);
+        }
+
+        return p;
+    }
+
 };
 
 namespace tags
@@ -106,28 +122,16 @@ template<typename T>
 inline void push(tags::user, T val, lua_State* L)
 {
     using base_type = typename util::base<T>::type;
-
-    if ( !udata::construct<base_type>(L, val) )
-        return; // assert(detail::construct_userdata<base_type>(...));
-
-    constexpr const char* name = user_type_name_storage<base_type>::value;
-    static_assert(name != nullptr, "");
-
-    udata::assign_metatable(name, L);
+    auto result = udata::initialize<base_type>(L, val);
+    assert(result);
 }
 
 template<typename T>
 inline void push(tags::user_ptr, T val, lua_State* L)
 {
     using base_type = typename util::base<T>::type;
-
-    if ( !udata::construct<base_type>(L, *val) )
-        return; // assert(detail::construct_userdata<base_type>(...));
-
-    const auto& name = user_type_name_storage<base_type>::value;
-
-    if ( !name.empty() )
-        assign_metatable(name, L);
+    auto result = udata::initialize<base_type>(L, *val);
+    assert(result);
 }
 
 template<typename T>
