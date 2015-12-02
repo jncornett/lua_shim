@@ -3,6 +3,10 @@
 #include "shim_builtins.h"
 #include "shim_util.h"
 
+#include <string>
+
+#include <luajit-2.0/lua.hpp>
+
 namespace Shim
 {
 
@@ -56,7 +60,7 @@ namespace detail
         else
             assign_metatable(-2, L);
     }
-}
+} // namespace detail
 
 namespace tags
 {

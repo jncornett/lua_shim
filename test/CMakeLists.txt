@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 2.8.12.1)
 project (shim_tests CXX)
 
+include ( FindLuaJIT.cmake )
 include_directories ( .. )
 
 file (

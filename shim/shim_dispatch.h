@@ -1,6 +1,10 @@
 #pragma once
 
+#include <string>
+
 #include "shim_builtins.h"
+
+struct lua_State;
 
 namespace Shim
 {
@@ -28,6 +32,7 @@ inline std::string type_name(lua_State* L)
 
 } // namespace Shim
 
+#if 0
 namespace
 {
 
@@ -65,3 +70,4 @@ inline void test_dispatch()
 }
 
 } // anonymous namespace
+#endif

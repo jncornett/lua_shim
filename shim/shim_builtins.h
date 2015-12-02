@@ -1,12 +1,11 @@
 #pragma once
 
-#include <cstddef>
 #include <string>
 
 #include "shim_defs.h"
 #include "shim_util.h"
 
-#include "lua_mock.h"
+#include <luajit-2.0/lua.hpp>
 
 namespace Shim
 {
@@ -162,6 +161,7 @@ struct type_code<T, util::enable_if<detail::is_string<T>()>>
 
 } // namespace Shim
 
+#if 0
 namespace
 {
 using namespace Shim;
@@ -241,3 +241,4 @@ inline void test_builtins()
 }
 
 } // anonymous namespace
+#endif
