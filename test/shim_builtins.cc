@@ -11,9 +11,9 @@ TEST_CASE( "dispatch push" )
     SECTION( "integral" )
     {
         int v = 11;
-        stack::push(v, lua); // typed
-        stack::push(11, lua); // implicit
-        stack::push<decltype(v)>(v, lua); // explicit
+        stack::push(lua, v); // typed
+        stack::push(lua, 11); // implicit
+        stack::push<decltype(v)>(lua, v); // explicit
 
         REQUIRE( lua_gettop(lua) == 3 );
 
@@ -27,9 +27,9 @@ TEST_CASE( "dispatch push" )
     SECTION( "floating point" )
     {
         double v = 3.14;
-        stack::push(v, lua); // typed
-        stack::push(3.14, lua); // implicit
-        stack::push<decltype(v)>(v, lua); // explicit
+        stack::push(lua, v); // typed
+        stack::push(lua, 3.14); // implicit
+        stack::push<decltype(v)>(lua, v); // explicit
 
         REQUIRE( lua_gettop(lua) == 3 );
 
@@ -43,9 +43,9 @@ TEST_CASE( "dispatch push" )
     SECTION( "boolean" )
     {
         bool v = true;
-        stack::push(v, lua); // typed
-        stack::push(true, lua); // implicit
-        stack::push<decltype(v)>(v, lua); // explicit
+        stack::push(lua, v); // typed
+        stack::push(lua, true); // implicit
+        stack::push<decltype(v)>(lua, v); // explicit
 
         REQUIRE( lua_gettop(lua) == 3 );
 
@@ -59,9 +59,9 @@ TEST_CASE( "dispatch push" )
     SECTION( "string" )
     {
         std::string v = "foo";
-        stack::push(v, lua); // typed
-        stack::push<decltype(v)>("foo", lua); // explicit/implicit
-        stack::push<decltype(v)>(v, lua); // explicit
+        stack::push(lua, v); // typed
+        stack::push<decltype(v)>(lua, "foo"); // explicit/implicit
+        stack::push<decltype(v)>(lua, v); // explicit
 
         REQUIRE( lua_gettop(lua) == 3 );
 
@@ -77,8 +77,8 @@ TEST_CASE( "dispatch push" )
     SECTION( "cstring" )
     {
         const char* v = "foo";
-        stack::push(v, lua); // typed
-        stack::push<decltype(v)>(v, lua); // explicit
+        stack::push(lua, v); // typed
+        stack::push<decltype(v)>(lua, v); // explicit
 
         REQUIRE( lua_gettop(lua) == 2 );
 
@@ -101,8 +101,8 @@ TEST_CASE( "dispatch cast/dispatch is" )
         lua_pushinteger(lua, v);
         REQUIRE( lua_type(lua, -1) == LUA_TNUMBER );
 
-        CHECK( stack::is<decltype(v)>(-1, lua) );
-        CHECK( stack::cast<decltype(v)>(-1, lua) == v );
+        CHECK( stack::is<decltype(v)>(lua, -1) );
+        CHECK( stack::cast<decltype(v)>(lua, -1) == v );
     }
 
     SECTION( "floating point" )
@@ -111,8 +111,8 @@ TEST_CASE( "dispatch cast/dispatch is" )
         lua_pushnumber(lua, v);
         REQUIRE( lua_type(lua, -1) == LUA_TNUMBER );
 
-        CHECK( stack::is<decltype(v)>(-1, lua) );
-        CHECK( stack::cast<decltype(v)>(-1, lua) == v );
+        CHECK( stack::is<decltype(v)>(lua, -1) );
+        CHECK( stack::cast<decltype(v)>(lua, -1) == v );
     }
 
     SECTION( "boolean" )
@@ -121,8 +121,8 @@ TEST_CASE( "dispatch cast/dispatch is" )
         lua_pushboolean(lua, v);
         REQUIRE( lua_type(lua, -1) == LUA_TBOOLEAN );
 
-        CHECK( stack::is<decltype(v)>(-1, lua) );
-        CHECK( stack::cast<decltype(v)>(-1, lua) == v );
+        CHECK( stack::is<decltype(v)>(lua, -1) );
+        CHECK( stack::cast<decltype(v)>(lua, -1) == v );
     }
 
     SECTION( "string" )
@@ -131,8 +131,8 @@ TEST_CASE( "dispatch cast/dispatch is" )
         lua_pushstring(lua, v.c_str());
         REQUIRE( lua_type(lua, -1) == LUA_TSTRING );
 
-        CHECK( stack::is<decltype(v)>(-1, lua) );
-        CHECK( stack::cast<decltype(v)>(-1, lua) == v );
+        CHECK( stack::is<decltype(v)>(lua, -1) );
+        CHECK( stack::cast<decltype(v)>(lua, -1) == v );
     }
 
     SECTION( "cstring" )
@@ -140,9 +140,9 @@ TEST_CASE( "dispatch cast/dispatch is" )
         const char* v = "foo";
         lua_pushstring(lua, v);
         REQUIRE( lua_type(lua, -1) == LUA_TSTRING );
-        std::string s = stack::cast<decltype(v)>(-1, lua);
+        std::string s = stack::cast<decltype(v)>(lua, -1);
 
-        CHECK( stack::is<decltype(v)>(-1, lua) );
+        CHECK( stack::is<decltype(v)>(lua, -1) );
         CHECK( s == v );
     }
 }

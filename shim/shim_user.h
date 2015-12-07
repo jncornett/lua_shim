@@ -13,64 +13,79 @@ namespace Shim
 {
 
 template<typename T>
-struct user_type_name_storage
-{ static constexpr const char* value = nullptr; };
+struct type_name_storage
+{ static const char* value; };
 
+template<typename T>
+const char* type_name_storage<T>::value = nullptr;
+
+template<typename T>
 struct udata
 {
+    using base_type = typename util::base<T>::type;
 
-    template<typename T>
-    static T** allocate(lua_State* L)
-    { return static_cast<T**>(lua_newuserdata(L, sizeof(T*))); }
+    static base_type** allocate(lua_State* L)
+    { return static_cast<base_type**>(lua_newuserdata(L, sizeof(base_type*))); }
 
-    template<typename T, typename... Args>
-    static T* construct(lua_State* L, Args&&... args)
+    template<typename... Args>
+    static base_type* construct(lua_State* L, Args&&... args)
     {
-        auto h = allocate<T>(L);
+        auto h = allocate(L);
         assert(h);
 
         if ( h )
         {
-            *h = new T(std::forward<Args>(args)...);
+            *h = new base_type(std::forward<Args>(args)...);
             return *h;
         }
 
         return nullptr;
     }
 
-    template<typename T>
-    static T* extract(int n, lua_State* L)
+    static base_type** extract_handle(lua_State* L, int n)
+    { return static_cast<base_type**>(lua_touserdata(L, n)); }
+
+    static base_type* extract_ptr(lua_State* L, int n)
     {
-        auto h = static_cast<T**>(lua_touserdata(L, n));
+        auto h = extract_handle(L, n);
         return h ? *h : nullptr;
     }
 
-    static void assign_metatable(int n, lua_State* L)
+    static void assign_metatable(lua_State* L, int n)
     { lua_setmetatable(L, n); }
 
-    static void assign_metatable(const char* name, lua_State* L)
+    static void assign_metatable(lua_State* L, const char* name)
     {
         luaL_getmetatable(L, name);
         // type must be registered with lua before use
         assert(!lua_isnoneornil(L, -1));
-        assign_metatable(-2, L);
+        assign_metatable(L, -2);
     }
 
-    template<typename T, typename... Args>
-    static T* initialize(lua_State* L, Args&&... args)
+    template<typename... Args>
+    static base_type* initialize(lua_State* L, Args&&... args)
     {
-        auto p = construct<T>(L, std::forward<Args>(args)...);
+        auto p = construct(L, std::forward<Args>(args)...);
 
         if ( p )
         {
-            constexpr const char* name = user_type_name_storage<T>::value;
-            static_assert(name != nullptr, "");
-            assign_metatable(name, L);
+            const auto name = type_name_storage<base_type>::value;
+            assert(name);
+
+            assign_metatable(L, name);
         }
 
         return p;
     }
 
+    static void destroy(lua_State* L, int n)
+    {
+        auto h = extract_handle(L, n);
+        assert(h);
+
+        delete *h;
+        *h = nullptr;
+    }
 };
 
 namespace tags
@@ -87,15 +102,13 @@ namespace impl
 {
 
 template<typename T>
-inline bool is(tags::user, int n, lua_State* L)
+inline bool is(tags::user, lua_State* L, int n)
 {
     if ( lua_type(L, n) != LUA_TUSERDATA )
         return false;
 
-    constexpr const char* name =
-        user_type_name_storage<typename util::base<T>::type>::value;
-
-    static_assert(*name != '\0', "");
+    const auto name = type_name_storage<typename util::base<T>::type>::value;
+    assert(name && *name);
 
     lua_getmetatable(L, n);
 
@@ -116,32 +129,30 @@ inline bool is(tags::user, int n, lua_State* L)
 
 template<typename T>
 inline std::string type_name(tags::user, lua_State*)
-{ return user_type_name_storage<T>::value; }
+{ return type_name_storage<typename util::base<T>::type>::value; }
 
 template<typename T>
-inline void push(tags::user, T val, lua_State* L)
+inline void push(tags::user, lua_State* L, T val)
 {
-    using base_type = typename util::base<T>::type;
-    auto result = udata::initialize<base_type>(L, val);
+    auto result = udata<T>::initialize(L, val);
     assert(result);
 }
 
 template<typename T>
-inline void push(tags::user_ptr, T val, lua_State* L)
+inline void push(tags::user_ptr, lua_State* L, T val)
 {
-    using base_type = typename util::base<T>::type;
-    auto result = udata::initialize<base_type>(L, *val);
+    auto result = udata<T>::initialize(L, *val);
     assert(result);
 }
 
 template<typename T>
-inline T cast(tags::user, int n, lua_State* L)
-{ return *udata::extract<typename util::base<T>::type>(n, L); }
+inline T cast(tags::user, lua_State* L, int n)
+{ return *udata<T>::extract_ptr(L, n); }
 
 
 template<typename T>
-inline T cast(tags::user_ptr, int n, lua_State* L)
-{ return udata::extract<typename util::base<T>::type>(n, L); }
+inline T cast(tags::user_ptr, lua_State* L, int n)
+{ return udata<T>::extract_ptr(L, n); }
 
 } // namespace impl
 

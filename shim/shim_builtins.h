@@ -29,7 +29,7 @@ namespace impl
 // all builtin types
 
 template<typename T>
-inline bool is(tags::builtin, int n, lua_State* L)
+inline bool is(tags::builtin, lua_State* L, int n)
 { return lua_type(L, n) == type_code<T>::value; }
 
 template<typename T>
@@ -39,41 +39,41 @@ inline std::string type_name(tags::builtin, lua_State* L)
 // integral types
 
 template<typename T>
-inline void push(tags::integral, T val, lua_State* L)
+inline void push(tags::integral, lua_State* L, T val)
 { lua_pushinteger(L, val); }
 
 template<typename T>
-inline T cast(tags::integral, int n, lua_State* L)
+inline T cast(tags::integral, lua_State* L, int n)
 { return lua_tointeger(L, n); }
 
 // floating point types
 
 template<typename T>
-inline void push(tags::floating_point, T val, lua_State* L)
+inline void push(tags::floating_point, lua_State* L, T val)
 { lua_pushnumber(L, val); }
 
 template<typename T>
-inline T cast(tags::floating_point, int n, lua_State* L)
+inline T cast(tags::floating_point, lua_State* L, int n)
 { return lua_tonumber(L, n); }
 
 // boolean types
 
 template<typename T>
-inline void push(tags::boolean, T val, lua_State* L)
+inline void push(tags::boolean, lua_State* L, T val)
 { lua_pushboolean(L, val); }
 
 template<typename T>
-inline T cast(tags::boolean, int n, lua_State* L)
+inline T cast(tags::boolean, lua_State* L, int n)
 { return lua_toboolean(L, n); }
 
 // string types
 
 template<typename T>
-inline void push(tags::string, T val, lua_State* L)
+inline void push(tags::string, lua_State* L, T val)
 { lua_pushlstring(L, val.c_str(), val.size()); }
 
 template<typename T>
-inline T cast(tags::string, int n, lua_State* L)
+inline T cast(tags::string, lua_State* L, int n)
 {
     size_t len;
     return T(lua_tolstring(L, n, &len), len);
@@ -82,11 +82,11 @@ inline T cast(tags::string, int n, lua_State* L)
 // cstring types
 
 template<typename T>
-inline void push(tags::cstring, T val, lua_State* L)
+inline void push(tags::cstring, lua_State* L, T val)
 { lua_pushstring(L, val); }
 
 template<typename T>
-inline T cast(tags::cstring, int n, lua_State* L)
+inline T cast(tags::cstring, lua_State* L, int n)
 { return lua_tostring(L, n); }
 
 } // namespace impl

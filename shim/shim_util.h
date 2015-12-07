@@ -2,6 +2,8 @@
 
 #include <type_traits>
 
+// utils that don't require the lua header
+
 namespace Shim
 {
 namespace util
@@ -28,5 +30,9 @@ struct base<T, enable_if<std::is_pointer<T>::value>>
     using type = typename base<removed>::type;
 };
 
-}
-}
+inline int abs_index(int top, int index)
+{ return ( index < 0 ) ? top - index + 1 : index; }
+
+} // namespace util
+
+} // namespace Shim

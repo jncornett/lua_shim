@@ -4,7 +4,7 @@ project (shim_tests CXX)
 include ( FindLuaJIT.cmake )
 include_directories ( .. )
 
-set ( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11" )
+set ( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -ggdb -O0" )
 
 file (
     GLOB TEST_FILES
