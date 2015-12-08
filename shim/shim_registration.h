@@ -6,6 +6,7 @@
 #include "shim_user.h"
 #include "shim_lua_util.h"
 #include "shim_dispatchx.h"
+#include "shim_applier.h"
 
 #include "lua_debug.h"
 
@@ -15,67 +16,62 @@ namespace Shim
 namespace registration
 {
 
-namespace detail
+namespace deconstruction
 {
 
-template<int N, typename... Pack>
-struct Constructor
+template<typename F>
+struct deconstruct_mem_fn {};
+
+template<typename R, typename... Args>
+struct deconstruct_mem_fn<R(Args...)>
 {
-    template<typename Class, typename... Args>
-    static Class* construct(lua_State*, Args&&... args)
-    { return new Class(std::forward<Args>(args)...); }
+    static void foo()
+    { std::cout << "deconstructing R(Args...)" << std::endl; }
 };
 
-template<int N, typename T, typename... Pack>
-struct Constructor<N, T, Pack...>
+template<typename R, typename... Args>
+struct deconstruct_mem_fn<R(*)(Args...)>
 {
-    template<typename Class, typename... Args>
-    static Class* construct(lua_State* L, Args&&... args)
-    {
-        return Constructor<N+1, Pack...>::template construct<Class>(L,
-            std::forward<Args>(args)..., stack::getx<T>(L, N));
-    }
+    static void foo()
+    { std::cout << "deconstructing R(*)(Args...)" << std::endl; }
 };
 
-template<int N, typename... Pack>
-struct Caller
+template<typename R, typename Class, typename... Args>
+struct deconstruct_mem_fn<R(Class::*)(Args...)>
 {
-    template<typename Return, typename Class, typename F, typename... Args>
-    static Return call(lua_State*, F fn, Class& cls, Args&&... args)
-    { return fn(cls, std::forward<Args>(args)...); }
+    static void foo()
+    { std::cout << "deconstructing R(Class::*)(Args...)" << std::endl; }
 };
 
-template<int N, typename T, typename... Pack>
-struct Caller<N, T, Pack...>
+template<typename R, typename... Args>
+struct deconstruct_mem_fn<std::function<R(Args...)>>
 {
-    template<typename Return, typename Class, typename F, typename... Args>
-    static Return call(lua_State* L, F fn, Class& cls, Args&&... args)
-    {
-        return Caller<N+1, Pack...>::template call<Return, Class>(L, fn, cls,
-            std::forward<Args>(args)..., stack::getx<T>(L, N));
-    }
+    static void foo()
+    { std::cout << "deconstructing std::function<R(Args...)>" << std::endl; }
 };
 
-template<int N, typename... Pack>
-struct StaticCaller
+template<typename R, typename Class, typename... Args>
+struct deconstruct_mem_fn<std::function<R(Class&, Args...)>>
 {
-    template<typename Return, typename F, typename... Args>
-    static Return call(lua_State*, F fn, Args&&... args)
-    { return fn(std::forward<Args>(args)...); }
+    static void foo()
+    { std::cout << "deconstructing std::function<R(Class&, Args...)>" << std::endl; }
 };
 
-template<int N, typename T, typename... Pack>
-struct StaticCaller<N, T, Pack...>
-{
-    template<typename Return, typename F, typename... Args>
-    static Return call(lua_State* L, F fn, Args&&... args)
-    {
-        return StaticCaller<N+1, Pack...>::template call<Return>(L, fn,
-            std::forward<Args>(args)..., stack::getx<T>(L, N));
-    }
-};
 
-} // namespace detail
+
+
+
+} // namespace deconstruction
+
+template<typename F>
+struct anon
+{
+    static int gc(lua_State* L)
+    { udata<F>::destroy(L, 1); return 0; }
+
+    static F& get(lua_State* L, int n)
+    { return udata<F>::extract_handle(L, n); }
+};
 
 template<typename Class>
 struct proxy
@@ -94,7 +90,7 @@ struct proxy
 
         try
         {
-            *h = detail::Constructor<1, Args...>::template construct<Class>(L);
+            *h = appliers::New<1, Args...>::template apply<Class>(L);
             assert(*h);
         }
         catch (Exception& e)
@@ -115,11 +111,9 @@ struct proxy
     }
 
     template<typename F>
-    static int raw_fn(lua_State*);
+    static int raw_fn(lua_State* L)
+    { return anon<F>::get(L, lua_upvalueindex(1))(L); }
 };
-
-template<typename F>
-inline void push_anonymous_callable(F, int, lua_State*);
 
 inline void push_cfunction(lua_CFunction fn, int t, const char* key,
     lua_State* L)
@@ -202,6 +196,7 @@ public:
 
     Adder& operator=(const Adder&) = delete;
 
+    // FIXIT-M J specialize on signature
     template<typename F>
     Adder& add_ctor(F)
     {
@@ -217,6 +212,7 @@ public:
         return *this;
     }
 
+    // FIXIT-M J specialize on signature
     template<typename F>
     Adder& add_dtor(F)
     {
@@ -231,15 +227,18 @@ public:
         return *this;
     }
 
+    // FIXIT-M J specialize on signature
     template<typename F>
-    Adder& add_function(F)
+    Adder& add_function(const char*, F)
     {
         assert(!finalized());
+        deconstruction::deconstruct_mem_fn<F>::foo();
         return *this;
     }
 
+    // FIXIT-M J specialize on signature
     template<typename F>
-    Adder& add_static_function(F)
+    Adder& add_static_function(const char*, F)
     {
         assert(!finalized());
         return *this;

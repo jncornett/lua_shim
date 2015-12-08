@@ -2,6 +2,8 @@
 
 #include <luajit-2.0/lua.hpp>
 
+#include "shim_user.h"
+
 // utils that require the lua header
 
 namespace Shim
@@ -35,6 +37,31 @@ private:
     const int top;
 };
 
+template<typename O>
+struct GC
+{
+    static int gc(lua_State* L)
+    { udata<O>::destroy(L, 1); return 0; }
+
+    static void push(lua_State* L, O& o)
+    {
+        udata<O>::initialize(L, o);
+        auto object = lua_gettop(L);
+
+        lua_newtable(L);
+        auto meta = lua_gettop(L);
+
+        lua_pushstring(L, "__gc");
+        lua_pushcfunction(L, gc);
+        lua_rawset(L, meta);
+
+        lua_setmetatable(L, object);
+    }
+
+    static O& get(lua_State* L, int n)
+    { return *udata<O>::extract_ptr(L, n); }
+
+};
 
 } // namespace util
 

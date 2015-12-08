@@ -59,7 +59,7 @@ struct udata
 
     template<typename... Args>
     static base_type* initialize(lua_State* L, Args&&... args)
-    {
+{
         auto p = construct(L, std::forward<Args>(args)...);
 
         if ( p )
