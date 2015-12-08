@@ -5,3 +5,4 @@ Rakefile
 /coverage.info
 /coverage.txt
 /lcov/
+/demo/build/
