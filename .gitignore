@@ -1,3 +1,7 @@
 Rakefile
 .vimrc
 /test_build/
+/build/
+/coverage.info
+/coverage.txt
+/lcov/

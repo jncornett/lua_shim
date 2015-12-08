@@ -33,13 +33,8 @@ struct udata
         auto h = allocate(L);
         assert(h);
 
-        if ( h )
-        {
-            *h = new base_type(std::forward<Args>(args)...);
-            return *h;
-        }
-
-        return nullptr;
+        *h = new base_type(std::forward<Args>(args)...);
+        return *h;
     }
 
     static base_type** extract_handle(lua_State* L, int n)
