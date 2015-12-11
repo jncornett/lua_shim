@@ -1,7 +1,7 @@
 #pragma once
 
-#include "shim_dispatch.h"
-#include "shim_exception.h"
+#include "shim_exception.hpp"
+#include "shim_dispatch.hpp"
 
 struct lua_State;
 

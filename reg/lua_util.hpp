@@ -2,7 +2,7 @@
 
 #include <luajit-2.0/lua.hpp>
 
-#include "shim_user.h"
+#include "shim_user.hpp"
 
 // utils that require the lua header
 
@@ -38,7 +38,7 @@ private:
 };
 
 template<typename O>
-struct GC
+struct GCObject
 {
     static int gc(lua_State* L)
     { udata<O>::destroy(L, 1); return 0; }

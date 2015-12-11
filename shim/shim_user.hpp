@@ -1,24 +1,43 @@
 #pragma once
 
-#include "shim_builtins.h"
-#include "shim_util.h"
-
 #include <cassert>
-#include <string>
-#include <utility>
 
 #include <luajit-2.0/lua.hpp>
+
+#include "shim_user_defs.hpp"
+#include "shim_builtin.hpp"
 
 namespace Shim
 {
 
-template<typename T>
-struct type_name_storage
-{ static const char* value; };
+namespace detail
+{
 
 template<typename T>
-const char* type_name_storage<T>::value = nullptr;
+inline constexpr bool is_user()
+{
+    return !is_builtin<T>() &&
+        !std::is_pointer<T>::value &&
+        !std::is_reference<T>::value;
+}
 
+template<typename T>
+inline constexpr bool is_user_ref()
+{
+    return std::is_reference<T>::value &&
+        is_user<typename util::base<T>::type>();
+}
+
+template<typename T>
+inline constexpr bool is_user_ptr()
+{
+    return std::is_pointer<T>::value &&
+        is_user<typename util::base<T>::type>();
+}
+
+} // namespace detail
+
+// utils for working with Lua userdata
 template<typename T>
 struct udata
 {
@@ -83,15 +102,22 @@ struct udata
     }
 };
 
-namespace tags
+namespace traits
 {
 
-struct user {};
+template<typename T>
+struct trait<T, util::enable_if<detail::is_user<T>()>>
+{ using tag = tags::user; };
 
-struct user_ref : user {};
-struct user_ptr : user {};
+template<typename T>
+struct trait<T, util::enable_if<detail::is_user_ref<T>()>>
+{ using tag = tags::user_ref; };
 
-}
+template<typename T>
+struct trait<T, util::enable_if<detail::is_user_ptr<T>()>>
+{ using tag = tags::user_ptr; };
+
+} // namespace traits
 
 namespace impl
 {
@@ -144,50 +170,10 @@ template<typename T>
 inline T cast(tags::user, lua_State* L, int n)
 { return *udata<T>::extract_ptr(L, n); }
 
-
 template<typename T>
 inline T cast(tags::user_ptr, lua_State* L, int n)
 { return udata<T>::extract_ptr(L, n); }
 
 } // namespace impl
-
-namespace detail
-{
-
-template<typename T>
-inline constexpr bool is_user()
-{
-    return !is_builtin<T>() &&
-        !std::is_pointer<T>::value &&
-        !std::is_reference<T>::value;
-}
-
-template<typename T>
-inline constexpr bool is_user_ref()
-{
-    return std::is_reference<T>::value &&
-        is_user<typename util::base<T>::type>();
-}
-
-template<typename T>
-inline constexpr bool is_user_ptr()
-{
-    return std::is_pointer<T>::value &&
-        is_user<typename util::base<T>::type>();
-}
-
-} // namespace detail
-
-template<typename T>
-struct trait<T, util::enable_if<detail::is_user<T>()>>
-{ using tag = tags::user; };
-
-template<typename T>
-struct trait<T, util::enable_if<detail::is_user_ref<T>()>>
-{ using tag = tags::user_ref; };
-
-template<typename T>
-struct trait<T, util::enable_if<detail::is_user_ptr<T>()>>
-{ using tag = tags::user_ptr; };
 
 } // namespace Shim
