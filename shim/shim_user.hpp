@@ -68,17 +68,17 @@ struct udata
     static void assign_metatable(lua_State* L, int n)
     { lua_setmetatable(L, n); }
 
-    static void assign_metatable(lua_State* L, const char* name)
+    static void assign_metatable(lua_State* L, const char* name, int n)
     {
         luaL_getmetatable(L, name);
         // type must be registered with lua before use
         assert(!lua_isnoneornil(L, -1));
-        assign_metatable(L, -2);
+        assign_metatable(L, n);
     }
 
     template<typename... Args>
     static base_type* initialize(lua_State* L, Args&&... args)
-{
+    {
         auto p = construct(L, std::forward<Args>(args)...);
 
         if ( p )
@@ -86,7 +86,7 @@ struct udata
             const auto name = type_name_storage<base_type>::value;
             assert(name);
 
-            assign_metatable(L, name);
+            assign_metatable(L, name, lua_gettop(L));
         }
 
         return p;
