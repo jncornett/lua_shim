@@ -124,7 +124,7 @@ TEST_CASE ( "udata" )
         }
     }
 
-    SECTION ( "initialize/destroy" )
+    SECTION ( "create/destroy" )
     {
         // need to register this both for Lua and C++ side
         type_name_storage<X>::value = "X";
@@ -133,11 +133,25 @@ TEST_CASE ( "udata" )
         auto t = lua_gettop(lua);
 
         int v = d_v + 1;
-        X* p = udata<X>::initialize(lua, v);
-        REQUIRE( p );
 
-        X** h = static_cast<X**>(lua_touserdata(lua, -1));
-        udata<X>::destroy(lua, -1);
-        CHECK_FALSE ( *h );
+        SECTION ( "emplace/destroy" )
+        {
+            X* p = udata<X>::emplace(lua, v);
+            REQUIRE( p );
+
+            X** h = static_cast<X**>(lua_touserdata(lua, -1));
+            udata<X>::destroy(lua, -1);
+            CHECK_FALSE ( *h );
+        }
+
+        SECTION ( "assign" )
+        {
+            std::unique_ptr<X> x(new X(v));
+            udata<X>::assign(lua, x.get());
+
+            X** h = static_cast<X**>(lua_touserdata(lua, -1));
+            REQUIRE( h );
+            CHECK( *h == x.get() );
+        }
     }
 }

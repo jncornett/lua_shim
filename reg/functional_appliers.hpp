@@ -15,7 +15,7 @@
 //         { return *(T*)args[argn]; }
 //     };
 
-namespace Shim
+namespace Reg
 {
 
 namespace util
@@ -91,38 +91,3 @@ struct FunctorApplier
 } // namespace util
 
 }
-
-#if 0
-namespace _test_applier
-{
-
-struct Getter
-{
-    template<typename T>
-    T get(int N)
-    { return N; }
-};
-
-struct Class
-{
-    Class(int, float) {}
-};
-
-void void_functor(bool, int) {}
-int int_functor(bool, int) { return 0; }
-
-
-void test()
-{
-    Getter g;
-    Class* cls = Shim::util::NewApplier<Class, float>::call(g, 1);
-    (void)cls;
-
-    Shim::util::FunctorApplier<void, int>::call(g, void_functor, true);
-
-    int result = Shim::util::FunctorApplier<int, int>::call(g, int_functor, true);
-    (void)result;
-}
-
-} // _test_applier
-#endif

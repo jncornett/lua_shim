@@ -5,8 +5,9 @@ include ( cmake/FindLuaJIT.cmake )
 
 option ( BUILD_UNIT_TESTS "build unit tests" ON )
 option ( BUILD_DEMO "build demo" ON )
-option ( ENABLE_COVERAGE "enable coverage" ON )
+option ( ENABLE_COVERAGE "enable coverage" OFF )
 
+set ( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g -ggdb" )
 if ( ENABLE_COVERAGE )
     set ( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 --coverage" )
 endif ( ENABLE_COVERAGE )

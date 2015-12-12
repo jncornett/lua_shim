@@ -43,8 +43,34 @@ struct udata
 {
     using base_type = typename util::base<T>::type;
 
+    static void assign_metatable(lua_State* L, int n)
+    { lua_setmetatable(L, n); }
+
+    static void assign_metatable(lua_State* L, const char* name, int n)
+    {
+        luaL_getmetatable(L, name);
+        // type must be registered with lua before use
+        assert(!lua_isnoneornil(L, -1));
+        assign_metatable(L, n);
+    }
+
     static base_type** allocate(lua_State* L)
     { return static_cast<base_type**>(lua_newuserdata(L, sizeof(base_type*))); }
+
+    static void assign(lua_State* L, base_type* p)
+    {
+        assert(p);
+
+        const auto name = type_name_storage<base_type>::value;
+        assert(name);
+
+        auto h = allocate(L);
+        assert(h);
+
+        *h = p;
+
+        assign_metatable(L, name, lua_gettop(L));
+    }
 
     template<typename... Args>
     static base_type* construct(lua_State* L, Args&&... args)
@@ -65,30 +91,11 @@ struct udata
         return h ? *h : nullptr;
     }
 
-    static void assign_metatable(lua_State* L, int n)
-    { lua_setmetatable(L, n); }
-
-    static void assign_metatable(lua_State* L, const char* name, int n)
-    {
-        luaL_getmetatable(L, name);
-        // type must be registered with lua before use
-        assert(!lua_isnoneornil(L, -1));
-        assign_metatable(L, n);
-    }
-
     template<typename... Args>
-    static base_type* initialize(lua_State* L, Args&&... args)
+    static base_type* emplace(lua_State* L, Args&&... args)
     {
-        auto p = construct(L, std::forward<Args>(args)...);
-
-        if ( p )
-        {
-            const auto name = type_name_storage<base_type>::value;
-            assert(name);
-
-            assign_metatable(L, name, lua_gettop(L));
-        }
-
+        auto p = new base_type(std::forward<Args>(args)...);
+        assign(L, p);
         return p;
     }
 
@@ -155,14 +162,14 @@ inline std::string type_name(tags::user, lua_State*)
 template<typename T>
 inline void push(tags::user, lua_State* L, T val)
 {
-    auto result = udata<T>::initialize(L, val);
+    auto result = udata<T>::emplace(L, val);
     assert(result);
 }
 
 template<typename T>
 inline void push(tags::user_ptr, lua_State* L, T val)
 {
-    auto result = udata<T>::initialize(L, *val);
+    auto result = udata<T>::emplace(L, *val);
     assert(result);
 }
 
