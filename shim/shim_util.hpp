@@ -2,10 +2,11 @@
 
 #include <type_traits>
 
-// utils that don't require the lua header
+// miscellaneous utils
 
 namespace Shim
 {
+
 namespace util
 {
 
