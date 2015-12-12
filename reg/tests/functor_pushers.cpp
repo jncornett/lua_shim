@@ -24,7 +24,8 @@ static int raw_static_function(lua_State* L)
 
 struct X
 {
-    static bool member_function_spy;
+    bool member_function_spy = false;
+    mutable bool const_member_function_spy = false;
 
     static int destructor_calls;
 
@@ -37,13 +38,15 @@ struct X
     int int_member_function(int i, bool b)
     { member_function_spy = b; return i; }
 
+    void const_member_function() const
+    { const_member_function_spy = true; }
+
     X(int i) : constructor_init(i), constructor_called(true) { }
 
     ~X()
     { ++destructor_calls; }
 };
 
-bool X::member_function_spy = false;
 int X::destructor_calls = 0;
 
 } // namespace t_functor_pushers
@@ -171,24 +174,60 @@ TEST_CASE ( "pushers" )
 
                 CHECK( x->member_function_spy );
             }
+
+            SECTION( "const" )
+            {
+                util::auto_pusher<decltype(&X::const_member_function)>::push(
+                    lua, &X::const_member_function);
+
+                REQUIRE( lua_type(lua, -1) == LUA_TFUNCTION );
+
+                lua_pushvalue(lua, u);
+
+                if ( lua_pcall(lua, 1, 0, 0) )
+                    FAIL( lua_tostring(lua, -1) );
+
+                CHECK( x->const_member_function_spy );
+            }
         }
 
         SECTION( "with function object" )
         {
-            std::function<void(int, bool)> fn = void_static_function;
-            util::auto_pusher<decltype(fn)>::push(lua, fn);
+            SECTION( "normal operation" )
+            {
+                std::function<void(int, bool)> fn = void_static_function;
+                util::auto_pusher<decltype(fn)>::push(lua, fn);
 
-            REQUIRE( lua_type(lua, -1) == LUA_TFUNCTION );
+                REQUIRE( lua_type(lua, -1) == LUA_TFUNCTION );
 
-            static_function_spy = false;
+                static_function_spy = false;
 
-            lua_pushinteger(lua, 4);
-            lua_pushboolean(lua, true);
+                lua_pushinteger(lua, 4);
+                lua_pushboolean(lua, true);
 
-            if ( lua_pcall(lua, 2, 0, 0) )
-                FAIL( lua_tostring(lua, -1) );
+                if ( lua_pcall(lua, 2, 0, 0) )
+                    FAIL( lua_tostring(lua, -1) );
 
-            CHECK( static_function_spy );
+                CHECK( static_function_spy );
+            }
+
+            SECTION( "const" )
+            {
+                const std::function<void(int, bool)> fn = void_static_function;
+                util::auto_pusher<decltype(fn)>::push(lua, fn);
+
+                REQUIRE( lua_type(lua, -1) == LUA_TFUNCTION );
+
+                static_function_spy = false;
+
+                lua_pushinteger(lua, 4);
+                lua_pushboolean(lua, true);
+
+                if ( lua_pcall(lua, 2, 0, 0) )
+                    FAIL( lua_tostring(lua, -1) );
+
+                CHECK( static_function_spy );
+            }
         }
 
         SECTION( "with raw function" )
@@ -214,21 +253,32 @@ TEST_CASE ( "pushers" )
         util::constructor_pusher<X, int>::push(lua);
         CHECK( lua_type(lua, -1) == LUA_TFUNCTION );
 
-        int v = 4;
-        lua_pushinteger(lua, v);
-        if ( lua_pcall(lua, 1, 1, 0) )
-            FAIL( lua_tostring(lua, -1) );
+        SECTION( "normal operation" )
+        {
+            int v = 4;
+            lua_pushinteger(lua, v);
+            if ( lua_pcall(lua, 1, 1, 0) )
+                FAIL( lua_tostring(lua, -1) );
 
-        REQUIRE( lua_type(lua, -1) == LUA_TUSERDATA );
-        auto h = static_cast<X**>(lua_touserdata(lua, -1));
-        REQUIRE( h );
-        REQUIRE( *h );
-        auto p = *h;
+            REQUIRE( lua_type(lua, -1) == LUA_TUSERDATA );
+            auto h = static_cast<X**>(lua_touserdata(lua, -1));
+            REQUIRE( h );
+            REQUIRE( *h );
+            auto p = *h;
 
-        CHECK( p->constructor_called );
-        CHECK( p->constructor_init == v );
+            CHECK( p->constructor_called );
+            CHECK( p->constructor_init == v );
+            delete p;
+        }
 
-        delete p;
+        SECTION( "handles exception" )
+        {
+            if ( !lua_pcall(lua, 0, 1, 0) )
+                FAIL( "expected a TypeError" );
+
+            std::string e = lua_tostring(lua, -1);
+            CHECK( e == "TypeError: (arg #1) expected 'number', got 'no value'" );
+        }
     }
 
     SECTION( "destructor pusher" )
@@ -236,28 +286,37 @@ TEST_CASE ( "pushers" )
         util::destructor_pusher<X>::push(lua);
         CHECK( lua_type(lua, -1) == LUA_TFUNCTION );
 
-        X::destructor_calls = 0;
-        auto h = static_cast<X**>(lua_newuserdata(lua, sizeof(X*)));
-        REQUIRE( h );
-        *h = new X(0);
-
-        // FIXIT-H cryptic TypeError error message when metatable is not assigned
-        luaL_getmetatable(lua, "X");
-        lua_setmetatable(lua, -2);
-
-        if ( lua_pcall(lua, 1, 0, 0) )
+        SECTION( "normal operation" )
         {
-            // make sure to cleanup
-            if ( *h )
-                delete *h;
+            X::destructor_calls = 0;
+            auto h = static_cast<X**>(lua_newuserdata(lua, sizeof(X*)));
+            REQUIRE( h );
+            *h = new X(0);
 
-            FAIL( lua_tostring(lua, -1) );
-        }
+            // FIXIT-H cryptic TypeError error message when metatable is not assigned
+            luaL_getmetatable(lua, "X");
+            lua_setmetatable(lua, -2);
 
-        else
-        {
+            if ( lua_pcall(lua, 1, 0, 0) )
+            {
+                // make sure to cleanup
+                if ( *h )
+                    delete *h;
+
+                FAIL( lua_tostring(lua, -1) );
+            }
+
             CHECK( X::destructor_calls == 1 );
             CHECK_FALSE( *h );
+        }
+
+        SECTION( "handles exception" )
+        {
+            if ( !lua_pcall(lua, 0, 0, 0) )
+                FAIL( "expected a TypeError" );
+
+            std::string e = lua_tostring(lua, -1);
+            CHECK( e == "TypeError: (arg #1) expected 'X', got 'no value'" );
         }
     }
 }

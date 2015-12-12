@@ -1,166 +1,69 @@
 #pragma once
 
-#include <functional>
+#include <cassert>
 #include <luajit-2.0/lua.hpp>
 
-#include "shim_user.h"
-#include "shim_lua_util.h"
-#include "shim_dispatchx.h"
-#include "shim_applier.h"
+#include "shim_util.hpp"
+#include "shim_user.hpp"
+#include "lua_pop.hpp"
+#include "functor_pushers.hpp"
 
-#include "lua_debug.h"
+struct lua_State;
 
-namespace Shim
+namespace Reg
 {
+
+using namespace Shim;
 
 namespace registration
 {
 
-namespace deconstruction
-{
-
-template<typename F>
-struct deconstruct_mem_fn {};
-
-template<typename R, typename... Args>
-struct deconstruct_mem_fn<R(Args...)>
-{
-    static void foo()
-    { std::cout << "deconstructing R(Args...)" << std::endl; }
-};
-
-template<typename R, typename... Args>
-struct deconstruct_mem_fn<R(*)(Args...)>
-{
-    static void foo()
-    { std::cout << "deconstructing R(*)(Args...)" << std::endl; }
-};
-
-template<typename R, typename Class, typename... Args>
-struct deconstruct_mem_fn<R(Class::*)(Args...)>
-{
-    static void foo()
-    { std::cout << "deconstructing R(Class::*)(Args...)" << std::endl; }
-};
-
-template<typename R, typename... Args>
-struct deconstruct_mem_fn<std::function<R(Args...)>>
-{
-    static void foo()
-    { std::cout << "deconstructing std::function<R(Args...)>" << std::endl; }
-};
-
-template<typename R, typename Class, typename... Args>
-struct deconstruct_mem_fn<std::function<R(Class&, Args...)>>
-{
-    static void foo()
-    { std::cout << "deconstructing std::function<R(Class&, Args...)>" << std::endl; }
-};
-
-
-
-
-
-} // namespace deconstruction
-
-template<typename F>
-struct anon
-{
-    static int gc(lua_State* L)
-    { udata<F>::destroy(L, 1); return 0; }
-
-    static F& get(lua_State* L, int n)
-    { return udata<F>::extract_handle(L, n); }
-};
-
-template<typename Class>
-struct proxy
-{
-    template<typename F, typename Return, typename... Args>
-    static int static_fn(lua_State* L);
-
-    template<typename F, typename Return, typename... Args>
-    static int fn(lua_State* L);
-
-    template<typename... Args>
-    static int ctor(lua_State* L)
-    {
-        auto h = udata<Class>::allocate(L);
-        assert(h);
-
-        try
-        {
-            *h = appliers::New<1, Args...>::template apply<Class>(L);
-            assert(*h);
-        }
-        catch (Exception& e)
-        {
-            // FIXIT-H J do we need to perform cleanup for e?
-            lua_pushstring(L, e.what().c_str());
-            lua_error(L);
-        }
-
-        return 1;
-    }
-
-    static int dtor(lua_State* L)
-    {
-        // FIXIT-L do we need to protect this call with a getx?
-        udata<Class>::destroy(L, 1);
-        return 0;
-    }
-
-    template<typename F>
-    static int raw_fn(lua_State* L)
-    { return anon<F>::get(L, lua_upvalueindex(1))(L); }
-};
-
-inline void push_cfunction(lua_CFunction fn, int t, const char* key,
-    lua_State* L)
-{
-    lua_pushstring(L, key);
-    lua_pushcfunction(L, fn);
-    lua_rawset(L, t);
-}
-
 struct Registry
 {
     const char* name;
-    int methods;
-    int meta;
-    bool has_ctor;
-    bool has_dtor;
-    bool exists;
+    int methods = 0;
+    int meta = 0;
+    bool has_ctor = false;
+    bool has_dtor = false;
+    bool has_tostring = false;
+    bool exists = false;
 
     Registry(lua_State* L, const char* name) :
-        name(name), has_ctor(false), has_dtor(false)
+        name(name)
     {
         assert(name);
 
         exists = !luaL_newmetatable(L, name);
         meta = lua_gettop(L);
 
-        // FIXIT-L J should this be lua_type(L, meta) == LUA_TTABLE?
-        assert(!lua_isnoneornil(L, meta));
+        assert(lua_istable(L, meta));
+
         if ( exists )
         {
-            // check for dtor
+            // check for __gc
             lua_pushstring(L, "__gc");
             lua_rawget(L, meta);
-            has_dtor = !lua_isnoneornil(L, -1);
+            has_dtor = lua_isfunction(L, -1);
             lua_pop(L, 1);
 
+            // check for __tostring
+            lua_pushstring(L, "__tostring");
+            lua_rawget(L, meta);
+            has_tostring = lua_isfunction(L, -1);
+            lua_pop(L, 1);
+
+            // access the methods table
             lua_pushstring(L, "__index");
             lua_rawget(L, meta);
             methods = lua_gettop(L);
 
-            // FIXIT-L J should this be lua_type(L, methods) == LUA_TTABLE?
-            assert(!lua_isnoneornil(L, methods));
+            assert(lua_istable(L, methods));
 
             // check for ctor
             lua_pushstring(L, "new");
+            lua_rawget(L, methods);
             // FIXIT-L J should this be lua_type(L, -1) == LUA_TFUNCTION?
-            has_ctor = !lua_isnoneornil(L, -1);
+            has_ctor = lua_isfunction(L, -1);
             lua_pop(L, 1);
         }
 
@@ -180,134 +83,153 @@ struct Registry
 };
 
 template<typename T>
-class Adder
+constexpr bool has_default_ctor()
+{ return std::is_default_constructible<T>::value; }
+
+// hack to only add default dtor if T is default constructible
+template<typename T, typename = void>
+struct AddDefaultCtor
+{
+    static bool add(lua_State*, int)
+    { return false; }
+};
+
+template<typename T>
+struct AddDefaultCtor<T, Shim::util::enable_if<has_default_ctor<T>()>>
+{
+    static bool add(lua_State* L, int t)
+    {
+        lua_pushstring(L, "new");
+        util::constructor_pusher<T>::push(L);
+        lua_rawset(L, t);
+        return true;
+    }
+};
+
+template<typename T>
+class Editor
 {
 public:
-    Adder(lua_State* L, const char* name) :
-        L(L), pop(new util::Pop(L)), info(L, name) { }
+    Editor(lua_State* L) :
+        L(L), pop(new Pop(L)), info(L, type_name_storage<T>::value)
+    { }
 
-    Adder(const Adder&) = delete;
-    Adder(Adder&& o) :
+    Editor(lua_State* L, const char* name) :
+        L(L), pop(new Pop(L)), info(L, name)
+    { type_name_storage<T>::value = name; }
+
+    // disable copy construction
+    Editor(const Editor&) = delete;
+
+    Editor(Editor&& o) :
         L(o.L), pop(o.pop), info(o.info)
-    { pop = nullptr; }
+    { o.pop = nullptr; }
 
-    virtual ~Adder()
-    { finalize(); }
+    ~Editor()
+    { finish(); }
 
-    Adder& operator=(const Adder&) = delete;
+    // disable copy/move assignment
+    Editor& operator=(const Editor&) = delete;
+    Editor& operator=(Editor&&) = delete;
 
-    // FIXIT-M J specialize on signature
-    template<typename F>
-    Adder& add_ctor(F)
+    void finish()
     {
-        assert(!finalized());
-        return *this;
-    }
-
-    template<typename... Args>
-    Adder& add_ctor()
-    {
-        assert(!finalized());
-        push_raw_method("new", proxy<T>::template ctor<Args...>);
-        return *this;
-    }
-
-    // FIXIT-M J specialize on signature
-    template<typename F>
-    Adder& add_dtor(F)
-    {
-        assert(!finalized());
-        return *this;
-    }
-
-    Adder& add_dtor()
-    {
-        assert(!finalized());
-        push_raw_metamethod("__gc", proxy<T>::dtor);
-        return *this;
-    }
-
-    // FIXIT-M J specialize on signature
-    template<typename F>
-    Adder& add_function(const char*, F)
-    {
-        assert(!finalized());
-        deconstruction::deconstruct_mem_fn<F>::foo();
-        return *this;
-    }
-
-    // FIXIT-M J specialize on signature
-    template<typename F>
-    Adder& add_static_function(const char*, F)
-    {
-        assert(!finalized());
-        return *this;
-    }
-
-    virtual void finalize()
-    {
-        if ( !finalized() )
+        if ( pop )
         {
             if ( !info.has_ctor )
-                add_ctor();
+                add_default_ctor();
 
             if ( !info.has_dtor )
                 add_dtor();
+
+            if ( !info.has_tostring )
+            {
+                push_function(info.meta, "__tostring", tostring_proxy);
+                info.has_tostring = true;
+            }
 
             delete pop;
             pop = nullptr;
         }
     }
 
-protected:
-    bool finalized() const
-    { return pop == nullptr; }
-
-    void push_raw_function(int t, const char* n, lua_CFunction fn)
+    template<typename F>
+    Editor& add_method(const char* key, F fn)
     {
-        lua_pushstring(L, n);
-        lua_pushcfunction(L, fn);
-        lua_rawset(L, t);
+        assert(pop);
+        push_function(info.methods, key, fn);
+        return *this;
     }
 
-    void push_raw_metamethod(const char* n, lua_CFunction fn)
-    { push_raw_function(info.meta, n, fn); }
+    template<typename F>
+    Editor& add_ctor(F fn)
+    {
+        assert(pop);
+        push_function(info.methods, "new", fn);
+        info.has_ctor = true;
+        return *this;
+    }
 
-    void push_raw_method(const char* n, lua_CFunction fn)
-    { push_raw_function(info.methods, n, fn); }
+    template<typename... Args>
+    Editor& add_ctor()
+    {
+        assert(pop);
+        lua_pushstring(L, "new");
+        util::constructor_pusher<T, Args...>::push(L);
+        lua_rawset(L, info.methods);
+        info.has_ctor = true;
+        return *this;
+    }
+
+    template<typename F>
+    Editor& add_dtor(F fn)
+    {
+        assert(pop);
+        push_function(info.meta, "__gc", fn);
+        info.has_dtor = true;
+        return *this;
+    }
+
+    Editor& add_dtor()
+    {
+        assert(pop);
+        lua_pushstring(L, "__gc");
+        util::destructor_pusher<T>::push(L);
+        lua_rawset(L, info.meta);
+        info.has_dtor = true;
+        return *this;
+    }
+
+    const Registry& get_info() const
+    { return info; }
+
+private:
+    void add_default_ctor()
+    {
+        if ( AddDefaultCtor<T>::add(L, info.methods) )
+            info.has_ctor = true;
+    }
+
+    template<typename F>
+    void push_function(int table, const char* key, F fn)
+    {
+        lua_pushstring(L, key);
+        util::auto_pusher<F>::push(L, fn);
+        lua_rawset(L, table);
+    }
 
     lua_State* L;
-    util::Pop* pop;
+    Pop* pop;
     Registry info;
-};
 
-template<typename T>
-class Editor : public Adder<T>
-{
-public:
-    Editor(lua_State* L) :
-        Adder<T>(L, Registry(L, type_name_storage<T>::value)) { }
-};
-
-template<typename T>
-class Creator : public Adder<T>
-{
-public:
-    Creator(lua_State* L, const char* name) :
-        Adder<T>(L, name)
-    { type_name_storage<T>::value = name; }
-
-    Creator(Creator&& o) : Adder<T>(std::move(o)) { }
+    // FIXIT-L find a better spot for this
+    static int tostring_proxy(lua_State* L)
+    {
+        stack::push(L, stack::type_name<T>(L));
+        return 1;
+    }
 };
 
 } // namespace registration
-
-template<typename T>
-registration::Creator<T> open_class(const char* name, lua_State* L)
-{ return registration::Creator<T>(L, name); }
-
-template<typename T>
-registration::Editor<T> open_class(lua_State* L)
-{ return registration::Editor<T>(L); }
 
 }

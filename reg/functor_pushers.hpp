@@ -166,9 +166,27 @@ struct auto_pusher<Return(Class::*)(Args...)>
     { method_pusher<Return, Class&, Args...>::push(L, std::mem_fn(fn)); }
 };
 
+// const member function pointer
+template<typename Return, typename Class, typename... Args>
+struct auto_pusher<Return(Class::*)(Args...) const>
+{
+    template<typename F>
+    static void push(lua_State* L, F fn)
+    { method_pusher<Return, Class&, Args...>::push(L, std::mem_fn(fn)); }
+};
+
 // function object
 template<typename Return, typename... Args>
 struct auto_pusher<std::function<Return(Args...)>>
+{
+    template<typename F>
+    static void push(lua_State* L, F fn)
+    { method_pusher<Return, Args...>::push(L, fn); }
+};
+
+// const function object
+template<typename Return, typename... Args>
+struct auto_pusher<const std::function<Return(Args...)>>
 {
     template<typename F>
     static void push(lua_State* L, F fn)
