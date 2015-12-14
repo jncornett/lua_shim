@@ -252,4 +252,12 @@ private:
 
 } // namespace registration
 
+template<typename T>
+inline registration::Editor<T> open_class(lua_State* L)
+{ return registration::Editor<T>(L); }
+
+template<typename T>
+inline registration::Editor<T> register_class(lua_State* L, std::string name)
+{ return registration::Editor<T>(L, name); }
+
 }

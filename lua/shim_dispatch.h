@@ -4,6 +4,7 @@
 #include "lua_exception.h"
 #include "shim_builtin.h"
 #include "shim_user.h"
+#include "shim_enum.h"
 
 namespace Lua
 {

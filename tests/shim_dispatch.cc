@@ -43,6 +43,9 @@ void string_stack_test(lua_State* L, T v)
 struct TUser
 { int x = d_v; };
 
+enum TEnum : char { A = 1 };
+enum class TEnumClass : char { A = 1 };
+
 } // namespace t_shim_dispatch
 
 
@@ -95,6 +98,23 @@ TEST_CASE ( "dispatch" )
             lua_pushnil(lua);
             CHECK_FALSE( stack::is<std::string>(lua, -1) );
             CHECK_FALSE( stack::is<const char*>(lua, -1) );
+        }
+    }
+
+    SECTION( "enum type" )
+    {
+        SECTION( "old enum" )
+        {
+            stack::push(lua, TEnum::A);
+            CHECK( stack::is<TEnum>(lua, -1) );
+            CHECK( stack::cast<TEnum>(lua, -1) == TEnum::A );
+        }
+
+        SECTION( "enum class" )
+        {
+            stack::push(lua, TEnumClass::A);
+            CHECK( stack::is<TEnumClass>(lua, -1) );
+            CHECK( stack::cast<TEnumClass>(lua, -1) == TEnumClass::A );
         }
     }
 

@@ -104,6 +104,14 @@ template<typename T>
 constexpr bool is_user()
 { return is_user_object<T>() or is_user_ref<T>() or is_user_ptr<T>(); }
 
+// only enums with integral underlying types are supported
+template<typename T>
+constexpr bool is_enum()
+{
+    using base_type = typename std::remove_reference<T>::type;
+    return std::is_enum<base_type>::value;
+}
+
 } // namespace util
 
 }
