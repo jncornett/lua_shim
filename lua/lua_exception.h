@@ -3,7 +3,7 @@
 #include <sstream>
 #include <string>
 
-namespace Shim
+namespace Lua
 {
 
 class Exception

@@ -1,86 +1,101 @@
 #pragma once
 
 #include <cassert>
+#include <string>
 #include <luajit-2.0/lua.hpp>
 
-#include "shim_util.hpp"
-#include "shim_user.hpp"
-#include "lua_pop.hpp"
-#include "functor_pushers.hpp"
+#include "shim_types.h"
+#include "lua_pop.h"
+#include "functional_pushers.h"
 
-struct lua_State;
-
-namespace Reg
+namespace Lua
 {
-
-using namespace Shim;
 
 namespace registration
 {
 
-struct Registry
+struct TypeInfo
 {
-    const char* name;
+    std::string name = "";
     int methods = 0;
     int meta = 0;
     bool has_ctor = false;
     bool has_dtor = false;
     bool has_tostring = false;
-    bool exists = false;
-
-    Registry(lua_State* L, const char* name) :
-        name(name)
-    {
-        assert(name);
-
-        exists = !luaL_newmetatable(L, name);
-        meta = lua_gettop(L);
-
-        assert(lua_istable(L, meta));
-
-        if ( exists )
-        {
-            // check for __gc
-            lua_pushstring(L, "__gc");
-            lua_rawget(L, meta);
-            has_dtor = lua_isfunction(L, -1);
-            lua_pop(L, 1);
-
-            // check for __tostring
-            lua_pushstring(L, "__tostring");
-            lua_rawget(L, meta);
-            has_tostring = lua_isfunction(L, -1);
-            lua_pop(L, 1);
-
-            // access the methods table
-            lua_pushstring(L, "__index");
-            lua_rawget(L, meta);
-            methods = lua_gettop(L);
-
-            assert(lua_istable(L, methods));
-
-            // check for ctor
-            lua_pushstring(L, "new");
-            lua_rawget(L, methods);
-            // FIXIT-L J should this be lua_type(L, -1) == LUA_TFUNCTION?
-            has_ctor = lua_isfunction(L, -1);
-            lua_pop(L, 1);
-        }
-
-        else
-        {
-            lua_newtable(L);
-            methods = lua_gettop(L);
-
-            lua_pushstring(L, "__index");
-            lua_pushvalue(L, methods);
-            lua_rawset(L, meta);
-
-            lua_pushvalue(L, methods);
-            lua_setglobal(L, name);
-        }
-    }
 };
+
+} // namespace registration
+
+namespace detail
+{
+
+inline bool check_key(lua_State* L, int table, const char* key, int type)
+{
+    Pop pop(L);
+
+    lua_pushstring(L, key);
+    lua_rawget(L, table);
+
+    return lua_type(L, -1) == type;
+}
+
+inline int get_key(lua_State* L, int table, const char* key)
+{
+    lua_pushstring(L, key);
+    lua_rawget(L, table);
+    return lua_gettop(L);
+}
+
+registration::TypeInfo open_type(lua_State* L, const char* name)
+{
+    assert(name);
+
+    registration::TypeInfo info;
+    info.name = name;
+
+    bool exists = !luaL_newmetatable(L, name);
+    info.meta = lua_gettop(L);
+
+    assert(lua_istable(L, info.meta));
+
+    if ( exists )
+    {
+        // check for __gc
+        info.has_dtor =
+            detail::check_key(L, info.meta, "__gc", LUA_TFUNCTION);
+
+        // check for __tostring
+        info.has_tostring =
+            detail::check_key(L, info.meta, "__tostring", LUA_TFUNCTION);
+
+        // access the methods table
+        info.methods =
+            detail::get_key(L, info.meta, "__index");
+
+        assert(lua_istable(L, info.methods));
+
+        // check for ctor
+        info.has_ctor =
+            detail::check_key(L, info.methods, "new", LUA_TFUNCTION);
+    }
+
+    else
+    {
+        lua_newtable(L);
+        info.methods = lua_gettop(L);
+
+        // set methods table as metatable index
+        lua_pushstring(L, "__index");
+        lua_pushvalue(L, info.methods);
+        lua_rawset(L, info.meta);
+
+        // register methods table globally
+        lua_pushvalue(L, info.methods);
+        lua_setglobal(L, info.name.c_str());
+    }
+
+    return info;
+}
 
 template<typename T>
 constexpr bool has_default_ctor()
@@ -88,35 +103,40 @@ constexpr bool has_default_ctor()
 
 // hack to only add default dtor if T is default constructible
 template<typename T, typename = void>
-struct AddDefaultCtor
+struct default_ctor_adder
 {
     static bool add(lua_State*, int)
     { return false; }
 };
 
 template<typename T>
-struct AddDefaultCtor<T, Shim::util::enable_if<has_default_ctor<T>()>>
+struct default_ctor_adder<T, util::enable_for<has_default_ctor<T>()>>
 {
     static bool add(lua_State* L, int t)
     {
-        lua_pushstring(L, "new");
-        util::constructor_pusher<T>::push(L);
+        lua_pushliteral(L, "new");
+        detail::constructor_pusher<T>::push(L);
         lua_rawset(L, t);
         return true;
     }
 };
+
+} // namespace detail
+
+namespace registration
+{
 
 template<typename T>
 class Editor
 {
 public:
     Editor(lua_State* L) :
-        L(L), pop(new Pop(L)), info(L, type_name_storage<T>::value)
+        L(L), pop(new Pop(L)), info(L, traits::type_name_storage<T>::value)
     { }
 
     Editor(lua_State* L, const char* name) :
-        L(L), pop(new Pop(L)), info(L, name)
-    { type_name_storage<T>::value = name; }
+        L(L), pop(new Pop(L)), info(detail::open_type(L, name))
+    { traits::type_name_storage<T>::value = name; }
 
     // disable copy construction
     Editor(const Editor&) = delete;
@@ -175,7 +195,7 @@ public:
     {
         assert(pop);
         lua_pushstring(L, "new");
-        util::constructor_pusher<T, Args...>::push(L);
+        detail::constructor_pusher<T, Args...>::push(L);
         lua_rawset(L, info.methods);
         info.has_ctor = true;
         return *this;
@@ -194,19 +214,19 @@ public:
     {
         assert(pop);
         lua_pushstring(L, "__gc");
-        util::destructor_pusher<T>::push(L);
+        detail::destructor_pusher<T>::push(L);
         lua_rawset(L, info.meta);
         info.has_dtor = true;
         return *this;
     }
 
-    const Registry& get_info() const
+    const TypeInfo& get_info() const
     { return info; }
 
 private:
     void add_default_ctor()
     {
-        if ( AddDefaultCtor<T>::add(L, info.methods) )
+        if ( detail::default_ctor_adder<T>::add(L, info.methods) )
             info.has_ctor = true;
     }
 
@@ -214,18 +234,18 @@ private:
     void push_function(int table, const char* key, F fn)
     {
         lua_pushstring(L, key);
-        util::auto_pusher<F>::push(L, fn);
+        detail::auto_pusher<F>::push(L, fn);
         lua_rawset(L, table);
     }
 
     lua_State* L;
     Pop* pop;
-    Registry info;
+    TypeInfo info;
 
     // FIXIT-L find a better spot for this
     static int tostring_proxy(lua_State* L)
     {
-        stack::push(L, stack::type_name<T>(L));
+        stack::push(L, stack::type_name<T>().c_str());
         return 1;
     }
 };

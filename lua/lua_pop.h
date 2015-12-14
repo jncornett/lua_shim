@@ -2,7 +2,7 @@
 
 #include <luajit-2.0/lua.hpp>
 
-namespace Reg
+namespace Lua
 {
 
 class Pop

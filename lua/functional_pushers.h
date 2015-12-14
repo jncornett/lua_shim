@@ -2,41 +2,50 @@
 
 #include <functional>
 
-#include "shim_builtin.hpp"
-#include "shim_user.hpp"
-#include "shim_exception.hpp"
-#include "functional_appliers.hpp"
-#include "lua_gcobject.hpp"
-#include "lua_getter.hpp"
+#include "functional_appliers.h"
+#include "lua_gcobject.h"
+#include "shim_dispatch.h"
 
-namespace Reg
+namespace Lua
 {
 
 namespace util
 {
 
-using namespace Shim;
+struct Getter
+{
+    lua_State* L;
+
+    template<typename T>
+    T get(int n)
+    { return stack::getx<T>(L, n); }
+};
+
+} // namespace util
+
+namespace detail
+{
 
 // have to break this out of method_pusher to specialize on return type :(
 template<typename Return, typename... Args>
-struct method_proxy_inner
+struct proxy_inner
 {
     template<typename Getter, typename Func>
     static int proxy(lua_State* L, Getter& getter, Func& func)
     {
-        auto ret = FunctorApplier<Return, Args...>::call(getter, func);
+        auto ret = functor_applier<1, Return, Args...>::apply(getter, func);
         stack::push(L, ret);
         return 1;
     }
 };
 
 template<typename... Args>
-struct method_proxy_inner<void, Args...>
+struct proxy_inner<void, Args...>
 {
     template<typename Getter, typename Func>
     static int proxy(lua_State*, Getter& getter, Func& func)
     {
-        FunctorApplier<void, Args...>::call(getter, func);
+        functor_applier<1, void, Args...>::apply(getter, func);
         return 0;
     }
 };
@@ -50,9 +59,9 @@ struct method_pusher
     {
         try
         {
-            StackGetter getter { L };
-            auto func = gc_object::get<Func>(L, lua_upvalueindex(1));
-            return method_proxy_inner<Return, Args...>::proxy(L, getter, func);
+            util::Getter getter { L };
+            auto func = util::gc_object::cast<Func>(L, lua_upvalueindex(1));
+            return proxy_inner<Return, Args...>::proxy(L, getter, func);
         }
 
         catch ( TypeError& e )
@@ -70,7 +79,7 @@ struct method_pusher
 
     static void push(lua_State* L, Func func)
     {
-        gc_object::push(L, func);
+        util::gc_object::push(L, func);
         lua_pushcclosure(L, proxy, 1);
     }
 };
@@ -82,9 +91,10 @@ struct constructor_pusher
     {
         try
         {
-            StackGetter getter { L };
-            auto cls = NewApplier<Class, Args...>::call(getter);
-            udata<Class>::assign(L, cls);
+            util::Getter getter { L };
+            auto inst = new_applier<1, Class, Args...>::apply(getter);
+            util::userdata<Class>::push(L, *inst);
+            util::userdata<Class>::assign_metatable(L, -1);
             return 1;
         }
 
@@ -114,7 +124,7 @@ struct destructor_pusher
         try
         {
             stack::check<Class>(L, 1);
-            udata<Class>::destroy(L, 1);
+            util::userdata<Class>::destroy(L, 1);
             return 0;
         }
 
