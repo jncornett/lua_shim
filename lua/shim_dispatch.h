@@ -24,8 +24,8 @@ inline bool is(lua_State* L, int n)
 { return impl::is<T>(typename traits::trait<T>::tag(), L, n); }
 
 template<typename T>
-inline std::string type_name(lua_State* L)
-{ return impl::type_name<T>(typename traits::trait<T>::tag(), L); }
+inline std::string type_name()
+{ return impl::type_name<T>(typename traits::trait<T>::tag()); }
 
 template<typename T>
 inline void check(lua_State* L, int n)
@@ -33,7 +33,7 @@ inline void check(lua_State* L, int n)
     if ( !is<T>(L, n) )
         throw TypeError(
             util::abs_index(lua_gettop(L), n),
-            type_name<T>(L),
+            type_name<T>(),
             lua_typename(L, lua_type(L, n))
         );
 }

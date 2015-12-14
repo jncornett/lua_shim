@@ -23,7 +23,11 @@ constexpr bool is_bool()
 
 template<typename T>
 constexpr bool is_signed_int()
-{ return std::is_signed<T>::value and sizeof(T) <= sizeof(lua_Integer); }
+{
+    return std::is_integral<T>::value and
+        std::is_signed<T>::value and
+        sizeof(T) <= sizeof(lua_Integer);
+}
 
 template<typename T>
 constexpr bool is_unsigned_int()
@@ -99,10 +103,6 @@ constexpr bool is_user_ptr()
 template<typename T>
 constexpr bool is_user()
 { return is_user_object<T>() or is_user_ref<T>() or is_user_ptr<T>(); }
-
-template<typename T>
-constexpr bool is_user_pod()
-{ return (is_user_object<T>() or is_user_ref<T>()) and std::is_pod<T>::value; }
 
 } // namespace util
 

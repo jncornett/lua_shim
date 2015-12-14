@@ -1,19 +1,17 @@
-#include "shim_user.hpp"
+#include "lua_userdata.h"
 
 #include <memory>
 
-#include "common.hpp"
+#include "common.h"
 
 #undef d_v
 #define d_v 3
 
-namespace t_shim_user
+namespace t_lua_userdata
 {
 // -----------------------------------------------------------------------------
 // fixtures
 // -----------------------------------------------------------------------------
-
-using namespace Shim;
 
 struct TUser
 {
@@ -27,19 +25,19 @@ struct TUser
 // static asserts
 // -----------------------------------------------------------------------------
 
-static_assert(std::is_same<udata<int**>::base_type, int>::value, "base type");
+static_assert(std::is_same<Lua::util::userdata<int**>::base_type, int>::value,
+    "base type");
 
-} // namespace t_shim_user
+} // namespace t_lua_userdata
 
 
 // -----------------------------------------------------------------------------
 // test cases
 // -----------------------------------------------------------------------------
 
-TEST_CASE ( "udata" )
+TEST_CASE ( "userdata" )
 {
-    using namespace Shim;
-    using namespace t_shim_user;
+    using namespace t_lua_userdata;
 
     State lua;
 
@@ -48,28 +46,11 @@ TEST_CASE ( "udata" )
     SECTION ( "allocate" )
     {
         auto ot = lua_gettop(lua);
-        X** p = udata<X>::allocate(lua);
+        X** p = Lua::util::userdata<X>::allocate(lua);
 
         CHECK( p );
         CHECK( lua_gettop(lua) == ot + 1 );
         CHECK( lua_type(lua, -1) == LUA_TUSERDATA );
-    }
-
-    SECTION ( "construct" )
-    {
-        auto ot = lua_gettop(lua);
-        X* p = udata<X>::construct(lua);
-
-        REQUIRE( p );
-        CHECK( p->v == d_v );
-
-        SECTION( "with args" )
-        {
-            int v = d_v + 1;
-            X* p = udata<X>::construct(lua, v);
-            REQUIRE( p );
-            CHECK( p->v == v );
-        }
     }
 
     std::unique_ptr<X> x(new X);
@@ -81,77 +62,36 @@ TEST_CASE ( "udata" )
 
         *v = x.get();
 
-        SECTION ( "extract handle" )
-        {
-            X** h = udata<X>::extract_handle(lua, -1);
-            CHECK( h == v );
-        }
-
-        SECTION ( "extract ptr" )
-        {
-            X* p = udata<X>::extract_ptr(lua, -1);
-            CHECK( p == *v );
-        }
+        X** h = Lua::util::userdata<X>::extract(lua, -1);
+        CHECK( h == v );
     }
 
-    SECTION ( "assign metatable" )
+    SECTION ( "push" )
     {
-        lua_newuserdata(lua, 1);
-        auto u = lua_gettop(lua);
+        std::unique_ptr<X> x(new X);
 
-        SECTION ( "by index" )
-        {
+        Lua::util::userdata<X>::push(lua, *x.get());
+        CHECK( lua_type(lua, -1) == LUA_TUSERDATA );
 
-            lua_newtable(lua);
-            auto t = lua_gettop(lua);
+        auto h = static_cast<X**>(lua_touserdata(lua, -1));
+        REQUIRE( h );
 
-            lua_pushvalue(lua, -1);
-
-            udata<void>::assign_metatable(lua, u);
-            lua_getmetatable(lua, u);
-            CHECK( lua_rawequal(lua, t, -1) );
-        }
-
-        SECTION ( "by name" )
-        {
-            // First we have to put the table in the registry
-            luaL_newmetatable(lua, "X"); // don't care if it exists already or not
-            auto t = lua_gettop(lua);
-
-            udata<void>::assign_metatable(lua, "X", u);
-            lua_getmetatable(lua, u);
-            CHECK( lua_rawequal(lua, t, -1) );
-        }
+        CHECK( *h == x.get() );
     }
 
-    SECTION ( "create/destroy" )
+    SECTION ( "emplace" )
     {
-        // need to register this both for Lua and C++ side
-        type_name_storage<X>::value = "X";
+        Lua::util::userdata<X>::emplace(lua);
+        CHECK( lua_type(lua, -1) == LUA_TUSERDATA );
 
-        luaL_newmetatable(lua, "X");
-        auto t = lua_gettop(lua);
+        auto h = static_cast<X**>(lua_touserdata(lua, -1));
+        REQUIRE( h );
+        REQUIRE( *h );
 
-        int v = d_v + 1;
+        delete *h;
+    }
 
-        SECTION ( "emplace/destroy" )
-        {
-            X* p = udata<X>::emplace(lua, v);
-            REQUIRE( p );
-
-            X** h = static_cast<X**>(lua_touserdata(lua, -1));
-            udata<X>::destroy(lua, -1);
-            CHECK_FALSE ( *h );
-        }
-
-        SECTION ( "assign" )
-        {
-            std::unique_ptr<X> x(new X(v));
-            udata<X>::assign(lua, x.get());
-
-            X** h = static_cast<X**>(lua_touserdata(lua, -1));
-            REQUIRE( h );
-            CHECK( *h == x.get() );
-        }
+    SECTION ( "destroy" )
+    {
     }
 }

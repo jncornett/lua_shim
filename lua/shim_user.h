@@ -4,6 +4,7 @@
 #include "shim_types.h"
 #include "lua_pop.h"
 #include "lua_userdata.h"
+#include "lua_util.h"
 
 namespace Lua
 {
@@ -14,12 +15,8 @@ namespace traits
 using namespace util;
 
 template<typename T>
-struct trait<T, enable_for<is_user<T>()>>
+struct trait<T, enable_for<is_user_object<T>() or is_user_ref<T>()>>
 { using tag = tags::user; };
-
-template<typename T>
-struct trait<T, enable_for<is_user_ref<T>()>>
-{ using tag = tags::user_ref; };
 
 template<typename T>
 struct trait<T, enable_for<is_user_ptr<T>()>>
@@ -28,13 +25,6 @@ struct trait<T, enable_for<is_user_ptr<T>()>>
 template<typename T>
 struct lua_type_code<T, enable_for<is_user<T>()>>
 { static constexpr auto value = LUA_TUSERDATA; };
-
-template<typename T>
-struct type_name_storage
-{ static std::string value; };
-
-template<typename T>
-std::string type_name_storage<T>::value = "";
 
 } // namespace traits
 
@@ -47,22 +37,24 @@ inline bool is(tags::user, lua_State* L, int n)
     if ( lua_type(L, n) != traits::lua_type_code<T>::value )
         return false;
 
-    const auto& name = traits::type_name_storage<T>::value;
+    const auto& name =
+        traits::type_name_storage<typename util::base<T>::type>::value;
 
     // can't do further comparison w/out type name
     if ( name.empty() )
         return false;
 
-    Pop pop(L);
-    {
-        luaL_getmetatable(L, name);
-        // no point in doing comparison if this happens
-        if ( !lua_istable(L, -1) )
-            return false;
+    // we'll be altering the stack, so we need the absolute index
+    auto idx = util::abs_index(lua_gettop(L), n);
 
-        lua_getmetatable(L, n);
-        return lua_rawequal(L, -2, -1);
-    }
+    Pop pop(L);
+
+    lua_getmetatable(L, idx);
+    if ( !lua_istable(L, -1) )
+        return false;
+
+    luaL_getmetatable(L, name.c_str());
+    return lua_rawequal(L, -2, -1);
 }
 
 template<typename T>

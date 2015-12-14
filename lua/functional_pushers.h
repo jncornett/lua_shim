@@ -33,7 +33,7 @@ struct proxy_inner
     template<typename Getter, typename Func>
     static int proxy(lua_State* L, Getter& getter, Func& func)
     {
-        auto ret = functor_applier<1, Return, Args...>::call(getter, func);
+        auto ret = functor_applier<1, Return, Args...>::apply(getter, func);
         stack::push(L, ret);
         return 1;
     }
@@ -45,7 +45,7 @@ struct proxy_inner<void, Args...>
     template<typename Getter, typename Func>
     static int proxy(lua_State*, Getter& getter, Func& func)
     {
-        functor_applier<1, void, Args...>::call(getter, func);
+        functor_applier<1, void, Args...>::apply(getter, func);
         return 0;
     }
 };
@@ -92,8 +92,9 @@ struct constructor_pusher
         try
         {
             util::Getter getter { L };
-            auto inst = new_applier<1, Class, Args...>::call(getter);
-            util::userdata<Class>::assign(L, inst);
+            auto inst = new_applier<1, Class, Args...>::apply(getter);
+            util::userdata<Class>::push(L, *inst);
+            util::userdata<Class>::assign_metatable(L, -1);
             return 1;
         }
 

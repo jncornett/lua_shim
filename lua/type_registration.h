@@ -245,7 +245,7 @@ private:
     // FIXIT-L find a better spot for this
     static int tostring_proxy(lua_State* L)
     {
-        stack::push(L, stack::type_name<T>(L));
+        stack::push(L, stack::type_name<T>().c_str());
         return 1;
     }
 };

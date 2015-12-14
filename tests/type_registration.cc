@@ -1,5 +1,5 @@
-#include "type_registration.hpp"
-#include "common.hpp"
+#include "type_registration.h"
+#include "common.h"
 
 namespace t_type_registration
 {
@@ -24,7 +24,7 @@ static_assert(std::is_default_constructible<TUser>::value, "");
 template<typename T>
 static void register_class(lua_State* L, const char* name)
 {
-    Shim::type_name_storage<T>::value = name;
+    Lua::traits::type_name_storage<T>::value = name;
     luaL_newmetatable(L, name);
     auto meta = lua_gettop(L);
     lua_newtable(L);
@@ -39,17 +39,18 @@ static void register_class(lua_State* L, const char* name)
 template<typename T>
 static void unregister_class(lua_State* L)
 {
-    const char* name = Shim::type_name_storage<T>::value;
-    if ( !name )
+    using namespace Lua;
+    const auto& name = traits::type_name_storage<T>::value;
+    if ( name.empty() )
         return;
 
-    lua_pushstring(L, name);
+    lua_pushstring(L, name.c_str());
     lua_pushnil(L);
     lua_rawset(L, LUA_REGISTRYINDEX);
     lua_pushnil(L);
-    lua_setglobal(L, name);
+    lua_setglobal(L, name.c_str());
 
-    Shim::type_name_storage<T>::value = nullptr;
+    traits::type_name_storage<T>::value = "";
 }
 
 }
@@ -58,9 +59,9 @@ static void unregister_class(lua_State* L)
 // test cases
 // -----------------------------------------------------------------------------
 
-TEST_CASE( "registry info" )
+TEST_CASE( "open type" )
 {
-    using namespace Reg;
+    using namespace Lua;
     using namespace t_type_registration;
 
     State lua;
@@ -70,7 +71,7 @@ TEST_CASE( "registry info" )
         // erase any existing info
         unregister_class<TUser>(lua);
 
-        registration::Registry info(lua, "TUser");
+        auto info = detail::open_type(lua, "TUser");
 
         std::string s = info.name;
         CHECK( s == "TUser" );
@@ -78,6 +79,7 @@ TEST_CASE( "registry info" )
         CHECK( lua_istable(lua, info.meta) );
         CHECK_FALSE( info.has_ctor );
         CHECK_FALSE( info.has_dtor );
+        CHECK_FALSE( info.has_tostring );
     }
 
     SECTION( "on an object already registered" )
@@ -86,9 +88,10 @@ TEST_CASE( "registry info" )
 
         SECTION( "no ctor/dtor" )
         {
-            registration::Registry info(lua, "TUser");
+            auto info = detail::open_type(lua, "TUser");
             CHECK_FALSE( info.has_ctor );
             CHECK_FALSE( info.has_dtor );
+            CHECK_FALSE( info.has_tostring );
         }
 
         SECTION( "has ctor" )
@@ -106,7 +109,7 @@ TEST_CASE( "registry info" )
                 lua_pop(lua, 2);
             }
 
-            registration::Registry info(lua, "TUser");
+            auto info = detail::open_type(lua, "TUser");
             CHECK( info.has_ctor );
         }
 
@@ -121,15 +124,30 @@ TEST_CASE( "registry info" )
                 lua_pop(lua, 1);
             }
 
-            registration::Registry info(lua, "TUser");
+            auto info = detail::open_type(lua, "TUser");
             CHECK( info.has_dtor );
+        }
+
+        SECTION( "has tostring" )
+        {
+            {
+                // append a tostring
+                REQUIRE_FALSE( luaL_newmetatable(lua, "TUser") );
+                lua_pushstring(lua, "__tostring");
+                lua_pushcfunction(lua, [](lua_State*) { return 0; });
+                lua_rawset(lua, -3);
+                lua_pop(lua, 1);
+            }
+
+            auto info = detail::open_type(lua, "TUser");
+            CHECK( info.has_tostring );
         }
     }
 }
 
 TEST_CASE( "class editor" )
 {
-    using namespace Reg;
+    using namespace Lua;
     using namespace t_type_registration;
 
     State lua;

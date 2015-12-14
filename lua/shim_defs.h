@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 namespace Lua
 {
 
@@ -29,8 +31,9 @@ struct c_string : string {};
 struct boolean : builtin {};
 
 struct user {};
-struct user_ref : user {};
 struct user_ptr : user {};
+
+struct enumeration {};
 
 } // namespace tags
 

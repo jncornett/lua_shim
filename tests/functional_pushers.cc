@@ -1,8 +1,8 @@
-#include "functor_pushers.hpp"
+#include "functional_pushers.h"
 
-#include "common.hpp"
+#include "common.h"
 
-namespace t_functor_pushers
+namespace t_functional_pushers
 {
 // -----------------------------------------------------------------------------
 // fixtures
@@ -57,12 +57,10 @@ int X::destructor_calls = 0;
 
 TEST_CASE ( "pushers" )
 {
-    using namespace Reg;
-    using namespace t_functor_pushers;
-
+    using namespace t_functional_pushers;
     State lua;
 
-    Shim::type_name_storage<X>::value = "X";
+    Lua::traits::type_name_storage<X>::value = "X";
     luaL_newmetatable(lua, "X");
     lua_pop(lua, 1);
 
@@ -72,8 +70,9 @@ TEST_CASE ( "pushers" )
         {
             SECTION( "int return" )
             {
-                util::auto_pusher<decltype(int_static_function)>::push(lua,
-                    int_static_function);
+                using func_type = decltype(int_static_function);
+                Lua::detail::auto_pusher<func_type>::
+                    push(lua, int_static_function);
 
                 REQUIRE( lua_type(lua, -1) == LUA_TFUNCTION );
                 static_function_spy = false;
@@ -92,8 +91,9 @@ TEST_CASE ( "pushers" )
 
             SECTION( "void return" )
             {
-                util::auto_pusher<decltype(void_static_function)>::push(lua,
-                    void_static_function);
+                using func_type = decltype(void_static_function);
+                Lua::detail::auto_pusher<func_type>::
+                    push(lua, void_static_function);
 
                 REQUIRE( lua_type(lua, -1) == LUA_TFUNCTION );
 
@@ -109,8 +109,9 @@ TEST_CASE ( "pushers" )
 
             SECTION( "exception handled" )
             {
-                util::auto_pusher<decltype(void_static_function)>::push(lua,
-                    void_static_function);
+                using func_type = decltype(void_static_function);
+                Lua::detail::auto_pusher<func_type>::
+                    push(lua, void_static_function);
 
                 REQUIRE( lua_type(lua, -1) == LUA_TFUNCTION );
 
@@ -138,8 +139,9 @@ TEST_CASE ( "pushers" )
 
             SECTION( "int return" )
             {
-                util::auto_pusher<decltype(&X::int_member_function)>::push(
-                    lua, &X::int_member_function);
+                using func_type = decltype(&X::int_member_function);
+                Lua::detail::auto_pusher<func_type>::
+                    push(lua, &X::int_member_function);
 
                 REQUIRE( lua_type(lua, -1) == LUA_TFUNCTION );
 
@@ -159,8 +161,9 @@ TEST_CASE ( "pushers" )
 
             SECTION( "void return" )
             {
-                util::auto_pusher<decltype(&X::void_member_function)>::push(
-                    lua, &X::void_member_function);
+                using func_type = decltype(&X::void_member_function);
+                Lua::detail::auto_pusher<func_type>::
+                    push(lua, &X::void_member_function);
 
                 REQUIRE( lua_type(lua, -1) == LUA_TFUNCTION );
 
@@ -177,8 +180,9 @@ TEST_CASE ( "pushers" )
 
             SECTION( "const" )
             {
-                util::auto_pusher<decltype(&X::const_member_function)>::push(
-                    lua, &X::const_member_function);
+                using func_type = decltype(&X::const_member_function);
+                Lua::detail::auto_pusher<func_type>::
+                    push(lua, &X::const_member_function);
 
                 REQUIRE( lua_type(lua, -1) == LUA_TFUNCTION );
 
@@ -196,7 +200,7 @@ TEST_CASE ( "pushers" )
             SECTION( "normal operation" )
             {
                 std::function<void(int, bool)> fn = void_static_function;
-                util::auto_pusher<decltype(fn)>::push(lua, fn);
+                Lua::detail::auto_pusher<decltype(fn)>::push(lua, fn);
 
                 REQUIRE( lua_type(lua, -1) == LUA_TFUNCTION );
 
@@ -214,7 +218,7 @@ TEST_CASE ( "pushers" )
             SECTION( "const" )
             {
                 const std::function<void(int, bool)> fn = void_static_function;
-                util::auto_pusher<decltype(fn)>::push(lua, fn);
+                Lua::detail::auto_pusher<decltype(fn)>::push(lua, fn);
 
                 REQUIRE( lua_type(lua, -1) == LUA_TFUNCTION );
 
@@ -232,7 +236,7 @@ TEST_CASE ( "pushers" )
 
         SECTION( "with raw function" )
         {
-            util::auto_pusher<decltype(raw_static_function)>::push(lua,
+            Lua::detail::auto_pusher<decltype(raw_static_function)>::push(lua,
                 raw_static_function);
 
             REQUIRE( lua_type(lua, -1) == LUA_TFUNCTION );
@@ -250,7 +254,7 @@ TEST_CASE ( "pushers" )
 
     SECTION( "constructor pusher" )
     {
-        util::constructor_pusher<X, int>::push(lua);
+        Lua::detail::constructor_pusher<X, int>::push(lua);
         CHECK( lua_type(lua, -1) == LUA_TFUNCTION );
 
         SECTION( "normal operation" )
@@ -277,13 +281,13 @@ TEST_CASE ( "pushers" )
                 FAIL( "expected a TypeError" );
 
             std::string e = lua_tostring(lua, -1);
-            CHECK( e == "TypeError: (arg #1) expected 'number', got 'no value'" );
+            CHECK( e == "TypeError: (arg #1) expected 'integer', got 'no value'" );
         }
     }
 
     SECTION( "destructor pusher" )
     {
-        util::destructor_pusher<X>::push(lua);
+        Lua::detail::destructor_pusher<X>::push(lua);
         CHECK( lua_type(lua, -1) == LUA_TFUNCTION );
 
         SECTION( "normal operation" )
